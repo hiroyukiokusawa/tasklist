@@ -2,8 +2,10 @@ package controllers;
 
 import java.io.IOException;
 import java.sql.Timestamp;
+import java.util.List;
 
 import javax.persistence.EntityManager;
+import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -12,6 +14,8 @@ import javax.servlet.http.HttpServletResponse;
 
 import models.Task;
 import utils.DBUtil;
+import validators.TaskValidator;
+
 
 /**
  * Servlet implementation class UpdateServlet
@@ -36,8 +40,8 @@ public class UpdateServlet extends HttpServlet {
         if(_token != null && _token.equals(request.getSession().getId())) {
             EntityManager em = DBUtil.createEntityManager();
 
-            // セッションスコープからメッセージのIDを取得して
-            // 該当のIDのメッセージ1件のみをデータベースから取得
+            // セッションスコープからタスクのIDを取得して
+            // 該当のIDのタスク1件のみをデータベースから取得
             Task m = em.find(Task.class, (Integer)(request.getSession().getAttribute("task_id")));
 
             // フォームの内容を各プロパティに上書き
@@ -50,19 +54,33 @@ public class UpdateServlet extends HttpServlet {
             Timestamp currentTime = new Timestamp(System.currentTimeMillis());
             m.setUpdated_at(currentTime);       // 更新日時のみ上書き
 
-            // データベースを更新
-            em.getTransaction().begin();
-            em.getTransaction().commit();
 
-            request.getSession().setAttribute("flush", "更新が完了しました。");
+         // バリデーションを実行してエラーがあったら編集画面のフォームに戻る
+            List<String> errors = TaskValidator.validate(m);
+            if(errors.size() > 0) {
+                em.close();
 
-            em.close();
+                // フォームに初期値を設定、さらにエラーメッセージを送る
+                request.setAttribute("_token", request.getSession().getId());
+                request.setAttribute("task", m);
+                request.setAttribute("errors", errors);
 
-            // セッションスコープ上の不要になったデータを削除
-            request.getSession().removeAttribute("task_id");
+                RequestDispatcher rd = request.getRequestDispatcher("/WEB-INF/views/tasks/edit.jsp");
+                rd.forward(request, response);
+            } else {
+                // データベースを更新
+                em.getTransaction().begin();
+                em.getTransaction().commit();
+                request.getSession().setAttribute("flush", "更新が完了しました。");
+                em.close();
 
-            // indexページへリダイレクト
-            response.sendRedirect(request.getContextPath() + "/index");
+                // セッションスコープ上の不要になったデータを削除
+                request.getSession().removeAttribute("task_id");
+
+                // indexページへリダイレクト
+                response.sendRedirect(request.getContextPath() + "/index");
+            }
         }
+
     }
 }
